@@ -49,14 +49,40 @@ def create_backbone(cfgpath, input_layer):
             elif bn == 0:
                 batch_normalize = False
 
-            conv_layer = tf.keras.layers.Conv2D(filters = out_channels, 
-                                                kernel_size = k, 
-                                                strides = stride, 
-                                                padding = padding,
-                                                use_bias=not batch_normalize, 
-                                                kernel_regularizer=tf.keras.regularizers.l2(0.0005),
-                                                kernel_initializer=tf.random_normal_initializer(stddev=0.01),
-                                                bias_initializer=tf.constant_initializer(0.))(prev_layer)
+            if layer['groups']:
+                group_num = layer['groups']
+                in_channels = prev_layer.shape[-1]
+
+                g = int(in_channels / group_num)
+                conv_layers = []
+
+                index = 0
+                for i in range(g):
+                    if not i == g - 1:
+                        group = tf.keras.layers.Lambda(lambda x: x[:,:,:,index:index+g])(prev_layer)
+                    else:
+                        group = tf.keras.layers.Lambda(lambda x: x[:,:,:,index:])(prev_layer)
+                    conv_layer_g = tf.keras.layers.Conv2D(filters = out_channels, 
+                                                          kernel_size = k, 
+                                                          strides = stride, 
+                                                          padding = padding,
+                                                          use_bias=not batch_normalize, 
+                                                          kernel_regularizer=tf.keras.regularizers.l2(0.0005),
+                                                          kernel_initializer=tf.random_normal_initializer(stddev=0.01),
+                                                          bias_initializer=tf.constant_initializer(0.))(group)
+                    conv_layers.append(conv_layer_g)
+                    index += g
+
+                conv_layer = tf.keras.concat(conv_layers)
+            else:
+                conv_layer = tf.keras.layers.Conv2D(filters = out_channels, 
+                                                    kernel_size = k, 
+                                                    strides = stride, 
+                                                    padding = padding,
+                                                    use_bias=not batch_normalize, 
+                                                    kernel_regularizer=tf.keras.regularizers.l2(0.0005),
+                                                    kernel_initializer=tf.random_normal_initializer(stddev=0.01),
+                                                    bias_initializer=tf.constant_initializer(0.))(prev_layer)
 
             if batch_normalize: conv_layer = BatchNormalization()(conv_layer)
 
@@ -102,7 +128,7 @@ def create_backbone(cfgpath, input_layer):
             all_layers.append(upsample_layer)
             prev_layer = upsample_layer
             layer_cnt += 1
-        elif layer['type'] == 'deconvolutional':
+        elif layer['type'] == 'deconvolutional': # This layer denotes 'tf.keras.layers.Conv2DTranspose'
             # [deconvolutional]
             # filters=64
             # size=2
@@ -143,7 +169,7 @@ def create_backbone(cfgpath, input_layer):
     return all_layers, feature_layers_index
 
 if __name__ == '__main__':
-    path = '/home/kim/ai/study/cfg.darknet/yolov4_ped_200917_upsample.cfg'
+    path = './cfg/yolov4.cfg'
 
     input_layer = tf.keras.Input(shape=(448, 448, 3))
     all_layers, features_layers_index = create_backbone(path,input_layer)

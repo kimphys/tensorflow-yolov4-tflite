@@ -57,7 +57,7 @@ def parse_data_cfg(path):
     return options
 
 if __name__ == '__main__':
-    path = '/home/kim/ai/study/cfg.darknet/yolov4_ped_200917_upsample.cfg'
+    path = './cfg/yolov4.cfg'
     
     model_summary = parse_model_cfg(path)
 
