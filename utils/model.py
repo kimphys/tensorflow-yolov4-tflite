@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import sys
 import os
-from parse_config import parse_model_cfg
+from utils.parse_config import parse_model_cfg
 
 class BatchNormalization(tf.keras.layers.BatchNormalization):
     """
@@ -20,7 +20,7 @@ class BatchNormalization(tf.keras.layers.BatchNormalization):
 def mish(x):
     return x * tf.math.tanh(tf.math.softplus(x))
 
-def create_backbone(cfgpath, input_layer):
+def create_model(cfgpath, input_layer):
 
     model_summary = parse_model_cfg(cfgpath)
 
@@ -49,7 +49,7 @@ def create_backbone(cfgpath, input_layer):
             elif bn == 0:
                 batch_normalize = False
 
-            if layer['groups']:
+            if layer.get('groups'):
                 group_num = layer['groups']
                 in_channels = prev_layer.shape[-1]
 
@@ -172,8 +172,10 @@ if __name__ == '__main__':
     path = './cfg/yolov4.cfg'
 
     input_layer = tf.keras.Input(shape=(448, 448, 3))
-    all_layers, features_layers_index = create_backbone(path,input_layer)
+    all_layers, features_layers_index = create_model(path,input_layer)
 
     model = tf.keras.Model(inputs=input_layer, outputs=[all_layers[i] for i in features_layers_index])
     model.summary()
-    print(features_layers_index)
+
+    for i in features_layers_index:
+        print(all_layers[i])

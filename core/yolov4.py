@@ -8,23 +8,43 @@ import core.common as common
 import core.backbone as backbone
 from core.config import cfg
 
+from utils.model import create_model
+
 # NUM_CLASS       = len(utils.read_class_names(cfg.YOLO.CLASSES))
 # STRIDES         = np.array(cfg.YOLO.STRIDES)
 # IOU_LOSS_THRESH = cfg.YOLO.IOU_LOSS_THRESH
 # XYSCALE = cfg.YOLO.XYSCALE
 # ANCHORS = utils.get_anchors(cfg.YOLO.ANCHORS)
 
-def YOLO(input_layer, NUM_CLASS, model='yolov4', is_tiny=False):
-    if is_tiny:
-        if model == 'yolov4':
-            return YOLOv4_tiny(input_layer, NUM_CLASS)
-        elif model == 'yolov3':
-            return YOLOv3_tiny(input_layer, NUM_CLASS)
+def YOLO(input_layer, NUM_CLASS, model='yolov4', is_tiny=False, cfgpath=None, num_anchors=3):
+    if not cfgpath:
+        if is_tiny:
+            if model == 'yolov4':
+                return YOLOv4_tiny(input_layer, NUM_CLASS)
+            elif model == 'yolov3':
+                return YOLOv3_tiny(input_layer, NUM_CLASS)
+        else:
+            if model == 'yolov4':
+                return YOLOv4(input_layer, NUM_CLASS)
+            elif model == 'yolov3':
+                return YOLOv3(input_layer, NUM_CLASS)
     else:
-        if model == 'yolov4':
-            return YOLOv4(input_layer, NUM_CLASS)
-        elif model == 'yolov3':
-            return YOLOv3(input_layer, NUM_CLASS)
+        return YOLO_custom(input_layer, NUM_CLASS, cfgpath, num_anchors)
+
+def YOLO_custom(input_layer, NUM_CLASS, cfgpath, num_anchors):
+    all_layers, features_layers_index = create_model(cfgpath, input_layer)
+
+    feature_layers = []
+    # Check whether feature layers have corresponding filters i.e. filters = (NUM_CLASS + 5) * num_anchors
+    for i in features_layers_index:
+        feature = all_layers[i]
+        if not feature.shape[-1] == (NUM_CLASS + 5) * num_anchors:
+            print("The {}th layer(conv) should have {} filters!".format(i, (NUM_CLASS + 5) * num_anchors))
+            break
+        else:
+            feature_layers.append(feature)
+
+    return feature_layers
 
 def YOLOv3(input_layer, NUM_CLASS):
     route_1, route_2, conv = backbone.darknet53(input_layer)

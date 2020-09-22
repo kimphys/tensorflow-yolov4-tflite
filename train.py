@@ -1,6 +1,7 @@
 from absl import app, flags, logging
 from absl.flags import FLAGS
 import os
+import sys
 import shutil
 import tensorflow as tf
 from core.yolov4 import YOLO, decode, compute_loss, decode_train
@@ -11,8 +12,9 @@ from core import utils
 from core.utils import freeze_all, unfreeze_all
 
 flags.DEFINE_string('model', 'yolov4', 'yolov4, yolov3')
-flags.DEFINE_string('weights', './scripts/yolov4.weights', 'pretrained weights')
+flags.DEFINE_string('weights', None, 'pretrained weights')
 flags.DEFINE_boolean('tiny', False, 'yolo or yolo-tiny')
+flags.DEFINE_string('cfg', None, 'darknet .cfg file, if .cfg file is set, all other flags are ignored')
 
 def main(_argv):
     physical_devices = tf.config.experimental.list_physical_devices('GPU')
@@ -24,6 +26,7 @@ def main(_argv):
     logdir = "./data/log"
     isfreeze = False
     steps_per_epoch = len(trainset)
+    num_anchors = cfg.YOLO.ANCHOR_PER_SCALE
     first_stage_epochs = cfg.TRAIN.FISRT_STAGE_EPOCHS
     second_stage_epochs = cfg.TRAIN.SECOND_STAGE_EPOCHS
     global_steps = tf.Variable(1, trainable=False, dtype=tf.int64)
@@ -35,29 +38,40 @@ def main(_argv):
     STRIDES, ANCHORS, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
     IOU_LOSS_THRESH = cfg.YOLO.IOU_LOSS_THRESH
 
-    freeze_layers = utils.load_freeze_layer(FLAGS.model, FLAGS.tiny)
-
-    feature_maps = YOLO(input_layer, NUM_CLASS, FLAGS.model, FLAGS.tiny)
-    if FLAGS.tiny:
-        bbox_tensors = []
-        for i, fm in enumerate(feature_maps):
-            if i == 0:
-                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 16, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
-            else:
-                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 32, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
-            bbox_tensors.append(fm)
-            bbox_tensors.append(bbox_tensor)
+    feature_maps = YOLO(input_layer, NUM_CLASS, FLAGS.model, FLAGS.tiny, FLAGS.cfg, num_anchors)
+    
+    if not FLAGS.cfg:
+        freeze_layers = utils.load_freeze_layer(FLAGS.model, FLAGS.tiny)
+    else:
+        freeze_layers = []
+        for feature in feature_maps:
+            tensor = feature.name
+            name = tensor.split('/')
+            freeze_layers.append(name[0])
+            
+    if not FLAGS.cfg:
+        if FLAGS.tiny:
+            bbox_tensors = []
+            for i, fm in enumerate(feature_maps):
+                if i == 0:
+                    bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 16, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
+                else:
+                    bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 32, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
+                bbox_tensors.append(fm)
+                bbox_tensors.append(bbox_tensor)
+        else:
+            bbox_tensors = []
+            for i, fm in enumerate(feature_maps):
+                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // STRIDES[i], NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
+                bbox_tensors.append(fm)
+                bbox_tensors.append(bbox_tensor)
     else:
         bbox_tensors = []
         for i, fm in enumerate(feature_maps):
-            if i == 0:
-                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 8, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
-            elif i == 1:
-                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 16, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
-            else:
-                bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // 32, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
+            bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // STRIDES[i], NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
             bbox_tensors.append(fm)
             bbox_tensors.append(bbox_tensor)
+
 
     model = tf.keras.Model(input_layer, bbox_tensors)
     model.summary()

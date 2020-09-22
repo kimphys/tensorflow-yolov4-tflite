@@ -80,27 +80,37 @@ def read_class_names(class_file_name):
     return names
 
 def load_config(FLAGS):
-    if FLAGS.tiny:
-        STRIDES = np.array(cfg.YOLO.STRIDES_TINY)
-        ANCHORS = get_anchors(cfg.YOLO.ANCHORS_TINY, FLAGS.tiny)
-        XYSCALE = cfg.YOLO.XYSCALE_TINY if FLAGS.model == 'yolov4' else [1, 1]
+    if not FLAGS.cfg:
+        if FLAGS.tiny:
+            STRIDES = np.array(cfg.YOLO.STRIDES_TINY)
+            ANCHORS = get_anchors(cfg.YOLO.ANCHORS_TINY, FLAGS.tiny)
+            XYSCALE = cfg.YOLO.XYSCALE_TINY if FLAGS.model == 'yolov4' else [1, 1]
+        else:
+            STRIDES = np.array(cfg.YOLO.STRIDES_V4)
+            if FLAGS.model == 'yolov4':
+                ANCHORS = get_anchors(cfg.YOLO.ANCHORS_V4, FLAGS.tiny)
+            elif FLAGS.model == 'yolov3':
+                ANCHORS = get_anchors(cfg.YOLO.ANCHORS_V3, FLAGS.tiny)
+            XYSCALE = cfg.YOLO.XYSCALE_V4 if FLAGS.model == 'yolov4' else [1, 1, 1]
     else:
         STRIDES = np.array(cfg.YOLO.STRIDES)
-        if FLAGS.model == 'yolov4':
-            ANCHORS = get_anchors(cfg.YOLO.ANCHORS, FLAGS.tiny)
-        elif FLAGS.model == 'yolov3':
-            ANCHORS = get_anchors(cfg.YOLO.ANCHORS_V3, FLAGS.tiny)
-        XYSCALE = cfg.YOLO.XYSCALE if FLAGS.model == 'yolov4' else [1, 1, 1]
+        ANCHORS = get_anchors(cfg.YOLO.ANCHOR_PER_SCALE, cfg.YOLO.ANCHORS, tiny=False, custom=True)
+        XYSCALE = cfg.YOLO.XYSCALE
     NUM_CLASS = len(read_class_names(cfg.YOLO.CLASSES))
 
     return STRIDES, ANCHORS, NUM_CLASS, XYSCALE
 
-def get_anchors(anchors_path, tiny=False):
+def get_anchors(anchor_per_scale, anchors_path, tiny=False, custom=False):
     anchors = np.array(anchors_path)
-    if tiny:
-        return anchors.reshape(2, 3, 2)
+    if not custom:
+        if tiny:
+            return anchors.reshape(2, 3, 2)
+        else:
+            return anchors.reshape(3, 3, 2)
     else:
-        return anchors.reshape(3, 3, 2)
+        assert (len(anchors_path) / 2) // anchor_per_scale == cfg.YOLO.NUM_YOLO
+        return anchors.reshape(cfg.YOLO.NUM_YOLO, anchor_per_scale, 2)
+
 
 def image_preprocess(image, target_size, gt_boxes=None):
 
