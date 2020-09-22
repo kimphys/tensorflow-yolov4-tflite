@@ -1,9 +1,11 @@
 # Introduction
 This repository is forked from hunglc007's fantastic [project](https://github.com/hunglc007/tensorflow-yolov4-tflite). To develop it further, several ideas are considered as follows,
 * [x] Create TF model by converting Darknet .cfg file directly. (Please refer to [AlexeyAB's .cfg samples](https://github.com/AlexeyAB/darknet/tree/master/cfg))
-* [ ] (under construction) Make it possible to train/test a model with any architecture. ex) Feel free to determine the number of the YOLO layers and the anchor boxes.
+* [x] (under construction) Make it possible to train/test a model with any architecture. ex) Feel free to determine the number of the YOLO layers and the anchor boxes.
 * [ ] Make it possible to train a model with any shape of images.
 * [ ] Add a familiar code to parse MS COCO annotation files to train the model.
+
+(2020/09/23) Currently, I'm writing simple manuals to train your custom model using Darknet .cfg file.
 
 # tensorflow-yolov4-tflite
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg)](LICENSE)
