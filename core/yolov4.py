@@ -188,16 +188,16 @@ def decode(conv_output, output_size, NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE=[1,
     else:
         return decode_tf(conv_output, output_size, NUM_CLASS, STRIDES, ANCHORS, i=i, XYSCALE=XYSCALE)
 
-def decode_train(conv_output, output_size, NUM_CLASS, STRIDES, ANCHORS, i=0, XYSCALE=[1, 1, 1]):
+def decode_train(conv_output, output_size, NUM_CLASS, STRIDES, ANCHORS, MASK=3, i=0, XYSCALE=[1, 1, 1]):
     conv_output = tf.reshape(conv_output,
-                             (tf.shape(conv_output)[0], output_size, output_size, 3, 5 + NUM_CLASS))
+                             (tf.shape(conv_output)[0], output_size, output_size, MASK, 5 + NUM_CLASS))
 
     conv_raw_dxdy, conv_raw_dwdh, conv_raw_conf, conv_raw_prob = tf.split(conv_output, (2, 2, 1, NUM_CLASS),
                                                                           axis=-1)
 
     xy_grid = tf.meshgrid(tf.range(output_size), tf.range(output_size))
     xy_grid = tf.expand_dims(tf.stack(xy_grid, axis=-1), axis=2)  # [gx, gy, 1, 2]
-    xy_grid = tf.tile(tf.expand_dims(xy_grid, axis=0), [tf.shape(conv_output)[0], 1, 1, 3, 1])
+    xy_grid = tf.tile(tf.expand_dims(xy_grid, axis=0), [tf.shape(conv_output)[0], 1, 1, MASK, 1])
 
     xy_grid = tf.cast(xy_grid, tf.float32)
 
@@ -337,12 +337,12 @@ def filter_boxes(box_xywh, scores, score_threshold=0.4, input_shape = tf.constan
     return (boxes, pred_conf)
 
 
-def compute_loss(pred, conv, label, bboxes, STRIDES, NUM_CLASS, IOU_LOSS_THRESH, i=0):
+def compute_loss(pred, conv, label, bboxes, STRIDES, NUM_CLASS, IOU_LOSS_THRESH, MASK=3, i=0):
     conv_shape  = tf.shape(conv)
     batch_size  = conv_shape[0]
     output_size = conv_shape[1]
     input_size  = STRIDES[i] * output_size
-    conv = tf.reshape(conv, (batch_size, output_size, output_size, 3, 5 + NUM_CLASS))
+    conv = tf.reshape(conv, (batch_size, output_size, output_size, MASK, 5 + NUM_CLASS))
 
     conv_raw_conf = conv[:, :, :, :, 4:5]
     conv_raw_prob = conv[:, :, :, :, 5:]

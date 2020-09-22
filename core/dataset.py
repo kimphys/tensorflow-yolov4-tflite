@@ -16,6 +16,7 @@ class Dataset(object):
     def __init__(self, FLAGS, is_training: bool, dataset_type: str = "converted_coco"):
         self.tiny = FLAGS.tiny
         self.strides, self.anchors, NUM_CLASS, XYSCALE = utils.load_config(FLAGS)
+        self.num_yolo = cfg.YOLO.NUM_YOLO
         self.dataset_type = dataset_type
 
         self.annot_path = (
@@ -96,46 +97,26 @@ class Dataset(object):
                 dtype=np.float32,
             )
 
-            batch_label_sbbox = np.zeros(
-                (
-                    self.batch_size,
-                    self.train_output_sizes[0],
-                    self.train_output_sizes[0],
-                    self.anchor_per_scale,
-                    5 + self.num_classes,
-                ),
-                dtype=np.float32,
-            )
-            batch_label_mbbox = np.zeros(
-                (
-                    self.batch_size,
-                    self.train_output_sizes[1],
-                    self.train_output_sizes[1],
-                    self.anchor_per_scale,
-                    5 + self.num_classes,
-                ),
-                dtype=np.float32,
-            )
-            batch_label_lbbox = np.zeros(
-                (
-                    self.batch_size,
-                    self.train_output_sizes[2],
-                    self.train_output_sizes[2],
-                    self.anchor_per_scale,
-                    5 + self.num_classes,
-                ),
-                dtype=np.float32,
-            )
+            batch_label_bboxes = []
+            batch_bboxes = []
 
-            batch_sbboxes = np.zeros(
-                (self.batch_size, self.max_bbox_per_scale, 4), dtype=np.float32
-            )
-            batch_mbboxes = np.zeros(
-                (self.batch_size, self.max_bbox_per_scale, 4), dtype=np.float32
-            )
-            batch_lbboxes = np.zeros(
-                (self.batch_size, self.max_bbox_per_scale, 4), dtype=np.float32
-            )
+            for i in range(self.num_yolo):
+                batch_label_bbox = np.zeros(
+                    (
+                        self.batch_size,
+                        self.train_output_sizes[i],
+                        self.train_output_sizes[i],
+                        self.anchor_per_scale,
+                        5 + self.num_classes,
+                    ),
+                    dtype=np.float32,
+                )
+                batch_bbox = np.zeros(
+                    (self.batch_size, self.max_bbox_per_scale, 4), dtype=np.float32
+                )
+
+                batch_label_bboxes.append(batch_label_bbox)
+                batch_bboxes.append(batch_bbox)
 
             num = 0
             if self.batch_count < self.num_batchs:
@@ -145,34 +126,31 @@ class Dataset(object):
                         index -= self.num_samples
                     annotation = self.annotations[index]
                     image, bboxes = self.parse_annotation(annotation)
-                    (
-                        label_sbbox,
-                        label_mbbox,
-                        label_lbbox,
-                        sbboxes,
-                        mbboxes,
-                        lbboxes,
-                    ) = self.preprocess_true_boxes(bboxes)
+
+                    label, bboxes_list = self.preprocess_true_boxes(bboxes)
 
                     batch_image[num, :, :, :] = image
-                    batch_label_sbbox[num, :, :, :, :] = label_sbbox
-                    batch_label_mbbox[num, :, :, :, :] = label_mbbox
-                    batch_label_lbbox[num, :, :, :, :] = label_lbbox
-                    batch_sbboxes[num, :, :] = sbboxes
-                    batch_mbboxes[num, :, :] = mbboxes
-                    batch_lbboxes[num, :, :] = lbboxes
+
+                    for i in range(self.num_yolo):
+                        batch_label_bbox = batch_label_bboxes[i]
+                        batch_label_bbox[num, :, :, :, :] = label[i]
+                        batch_label_bboxes[i] = batch_label_bbox
+
+                        batch_bbox = batch_bboxes[i]
+                        batch_bbox[num, :, :] = bboxes_list[i]
+                        batch_bboxes[i] = batch_bbox
+
                     num += 1
                 self.batch_count += 1
-                batch_smaller_target = batch_label_sbbox, batch_sbboxes
-                batch_medium_target = batch_label_mbbox, batch_mbboxes
-                batch_larger_target = batch_label_lbbox, batch_lbboxes
+
+                batch_target = []
+                for i in range(self.num_yolo):
+                    batch_target.append((batch_label_bboxes[i], batch_bboxes[i]))
 
                 return (
                     batch_image,
                     (
-                        batch_smaller_target,
-                        batch_medium_target,
-                        batch_larger_target,
+                        batch_target
                     ),
                 )
             else:
@@ -297,7 +275,7 @@ class Dataset(object):
                     5 + self.num_classes,
                 )
             )
-            for i in range(3)
+            for i in range(self.num_yolo)
         ]
         bboxes_xywh = [np.zeros((self.max_bbox_per_scale, 4)) for _ in range(3)]
         bbox_count = np.zeros((3,))
@@ -327,7 +305,7 @@ class Dataset(object):
 
             iou = []
             exist_positive = False
-            for i in range(3):
+            for i in range(self.num_yolo):
                 anchors_xywh = np.zeros((self.anchor_per_scale, 4))
                 anchors_xywh[:, 0:2] = (
                     np.floor(bbox_xywh_scaled[i, 0:2]).astype(np.int32) + 0.5
@@ -374,9 +352,7 @@ class Dataset(object):
                 )
                 bboxes_xywh[best_detect][bbox_ind, :4] = bbox_xywh
                 bbox_count[best_detect] += 1
-        label_sbbox, label_mbbox, label_lbbox = label
-        sbboxes, mbboxes, lbboxes = bboxes_xywh
-        return label_sbbox, label_mbbox, label_lbbox, sbboxes, mbboxes, lbboxes
+        return label, bboxes_xywh
 
     def __len__(self):
         return self.num_batchs

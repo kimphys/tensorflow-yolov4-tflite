@@ -26,6 +26,7 @@ def main(_argv):
     logdir = "./data/log"
     isfreeze = False
     steps_per_epoch = len(trainset)
+    MASK = cfg.YOLO.ANCHOR_PER_SCALE
     num_anchors = cfg.YOLO.ANCHOR_PER_SCALE
     first_stage_epochs = cfg.TRAIN.FISRT_STAGE_EPOCHS
     second_stage_epochs = cfg.TRAIN.SECOND_STAGE_EPOCHS
@@ -68,13 +69,20 @@ def main(_argv):
     else:
         bbox_tensors = []
         for i, fm in enumerate(feature_maps):
-            bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // STRIDES[i], NUM_CLASS, STRIDES, ANCHORS, i, XYSCALE)
+            bbox_tensor = decode_train(fm, cfg.TRAIN.INPUT_SIZE // STRIDES[i], NUM_CLASS, STRIDES, ANCHORS, MASK, i, XYSCALE)
             bbox_tensors.append(fm)
             bbox_tensors.append(bbox_tensor)
-
+            print(STRIDES[i],bbox_tensor.shape)
 
     model = tf.keras.Model(input_layer, bbox_tensors)
     model.summary()
+
+    # Check
+    # image_data = tf.keras.backend.random_uniform(shape=(1, cfg.TRAIN.INPUT_SIZE, cfg.TRAIN.INPUT_SIZE, 3),minval=0.0, maxval=1.0)
+    # pred = model(image_data,training=False)
+    # for i in range(len(pred)):
+    #     print(pred[i].shape)
+    # sys.exit()
 
     if FLAGS.weights == None:
         print("Training from scratch")
@@ -100,7 +108,10 @@ def main(_argv):
             # optimizing process
             for i in range(len(freeze_layers)):
                 conv, pred = pred_result[i * 2], pred_result[i * 2 + 1]
-                loss_items = compute_loss(pred, conv, target[i][0], target[i][1], STRIDES=STRIDES, NUM_CLASS=NUM_CLASS, IOU_LOSS_THRESH=IOU_LOSS_THRESH, i=i)
+                if not FLAGS.cfg:
+                    loss_items = compute_loss(pred, conv, target[i][0], target[i][1], STRIDES=STRIDES, NUM_CLASS=NUM_CLASS, IOU_LOSS_THRESH=IOU_LOSS_THRESH, i=i)
+                else:
+                    loss_items = compute_loss(pred, conv, target[i][0], target[i][1], STRIDES=STRIDES, NUM_CLASS=NUM_CLASS, IOU_LOSS_THRESH=IOU_LOSS_THRESH, MASK=MASK, i=i)
                 giou_loss += loss_items[0]
                 conf_loss += loss_items[1]
                 prob_loss += loss_items[2]
